@@ -1,0 +1,683 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>電吉他音色實驗台</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;1,700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: 上方走帶列 → 3D 舞台 → 訊號鏈長條 → 下方「裝置面板 | 示波器」雙欄。單一深色舞台風格（刻意不做亮色）。 */
+:root{
+  color-scheme:dark;
+  --bg:#14110f;        /* tolex 黑 */
+  --panel:#1d1916;
+  --panel2:#27211d;
+  --line:#3b322b;
+  --fg:#ece3d4;        /* 面板米白 */
+  --muted:#a09382;
+  --accent:#ffb347;    /* 真空管琥珀 */
+  --accent-ink:#1c1206;
+  --dry:#7fc4d6;       /* 處理前訊號 */
+  --off:#6b6158;
+  --font-display:"Barlow Condensed","Arial Narrow","PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+  --font-body:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei","Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:14px;line-height:1.6}
+.app{max-width:1280px;margin:0 auto;padding-block:16px 32px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:12px}
+h1,h2,h3{font-family:var(--font-display);margin:0;text-wrap:balance;letter-spacing:.02em}
+h1{font-size:28px;font-weight:700;line-height:1.1}
+.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.transport{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.lbl{font-family:var(--font-display);font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+button,select,input{font:inherit;color:inherit}
+select{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 10px;max-width:100%}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.play{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:9px 20px;font-family:var(--font-display);font-weight:700;font-size:17px;letter-spacing:.06em;min-width:112px}
+.play.on{background:var(--panel2);color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.filebtn{position:relative;overflow:hidden;border:1px dashed var(--line);border-radius:6px;padding:7px 10px;color:var(--muted);font-size:13px;cursor:pointer}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+input[type=range]{accent-color:var(--accent);min-width:0}
+#vol{width:110px}
+
+.stage{position:relative;height:clamp(300px,50vh,540px);border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0d0b0a}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.stage canvas:active{cursor:grabbing}
+.hint{position:absolute;left:12px;bottom:10px;right:12px;font-size:12px;color:var(--muted);pointer-events:none;text-shadow:0 1px 3px #000}
+.nogl{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted)}
+
+.chainbar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
+.end{font-family:var(--font-display);letter-spacing:.1em;font-size:13px;color:var(--muted);padding:6px 4px;text-transform:uppercase}
+.arrow{color:var(--off);font-size:12px}
+.chip{display:flex;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.chip.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.chip button{background:none;border:0;padding:6px 7px;line-height:1.2}
+.chip .nm{font-family:var(--font-display);font-weight:600;font-size:15px;letter-spacing:.04em;display:flex;align-items:center;gap:7px;padding-left:9px}
+.chip .dot{width:9px;height:9px;border-radius:50%;background:var(--sw);box-shadow:0 0 6px var(--sw)}
+.chip.off .dot{background:var(--off);box-shadow:none}
+.chip.off .nm{color:var(--muted)}
+.chip .mini{color:var(--muted);font-size:12px;border-left:1px solid var(--line)}
+.chip .mini:hover{color:var(--fg);background:var(--panel2)}
+.chip .mini:disabled{opacity:.3;cursor:default}
+.tools{display:flex;flex-wrap:wrap;gap:8px}
+
+.lower{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:12px;align-items:start}
+@media (max-width:860px){.lower{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.dev-head{display:flex;gap:12px;align-items:center}
+.swatch{width:14px;align-self:stretch;border-radius:3px;background:var(--sw);flex:none}
+.dev-head h2{font-size:24px;line-height:1.1}
+.dev-head h2 small{font-family:var(--font-body);font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;letter-spacing:0}
+.ref{margin:2px 0 0;font-size:12px;color:var(--muted)}
+.toggle{margin-left:auto;flex:none;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font-family:var(--font-display);font-weight:700;letter-spacing:.1em;color:var(--muted)}
+.toggle.on{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}
+.desc,.look{margin:0;max-width:62ch}
+.look{color:var(--muted);font-size:13px}
+.look b{color:var(--accent);font-weight:600}
+.params{display:grid;gap:8px}
+.param{display:grid;grid-template-columns:76px minmax(0,1fr) 68px;gap:10px;align-items:center}
+.param label{font-family:var(--font-display);font-size:14px;letter-spacing:.1em;text-transform:uppercase}
+.param output{font-family:var(--font-mono);font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.curve{margin:0;display:flex;gap:12px;align-items:center}
+.curve canvas{width:132px;height:132px;flex:none;background:#0d0b0a;border:1px solid var(--line);border-radius:6px}
+.curve figcaption{font-size:12px;color:var(--muted)}
+.sc-head{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}
+.sc-head h3{font-size:18px}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{background:none;border:0;padding:5px 10px;font-size:12px;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--panel2);color:var(--accent)}
+.scope{width:100%;height:190px;display:block;background:#0d0b0a;border:1px solid var(--line);border-radius:6px}
+.scope.spec{height:150px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.legend .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--fg);margin-left:6px}
+.cap{font-family:var(--font-display);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 -6px}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>電吉他音色實驗台</h1>
+      <p>把效果器和音箱一台一台串起來，邊聽邊看波形在每一站怎麼變。</p>
+    </div>
+    <div class="transport">
+      <button id="play" class="play" type="button">▶ 播放</button>
+      <label class="lbl">音源
+        <select id="src">
+          <option value="strum">開放和弦刷奏</option>
+          <option value="arp">分解和弦</option>
+          <option value="power">Power chord 悶音 riff</option>
+          <option value="blues">藍調單音樂句</option>
+          <option value="note">單音長音 (A2)</option>
+          <option value="sine">正弦波 220 Hz（看波形最清楚）</option>
+        </select>
+      </label>
+      <label class="filebtn">載入自己的錄音<input type="file" id="file" accept="audio/*"></label>
+      <label class="lbl">音量 <input type="range" id="vol" min="0" max="1" step="0.01" value="0.6"></label>
+    </div>
+  </header>
+
+  <section class="stage" id="stage">
+    <canvas id="gl"></canvas>
+    <div class="hint">拖曳旋轉・滾輪或雙指縮放・點裝置選取・點腳踏開關切換 ON / BYPASS・每台上方浮著的是它「輸出」的即時波形</div>
+  </section>
+
+  <section class="chainbar">
+    <div class="chain" id="chain"></div>
+    <div class="tools">
+      <select id="add" aria-label="加入裝置"></select>
+      <select id="preset" aria-label="套用經典組合">
+        <option value="">套用經典組合…</option>
+        <option value="blues">藍調 Crunch：Overdrive → British → Reverb</option>
+        <option value="metal">金屬高增益：Overdrive 推 High-Gain</option>
+        <option value="ambient">空靈 Clean：Comp → Chorus → Delay → Reverb</option>
+        <option value="psych">迷幻 Fuzz：Fuzz → Phaser → British</option>
+        <option value="funk">Funk：Comp → Auto-Wah → Clean</option>
+        <option value="surf">Surf：Tremolo → Clean → 大 Reverb</option>
+        <option value="di">全部拿掉（只剩吉他直出）</option>
+      </select>
+    </div>
+  </section>
+
+  <div class="lower">
+    <section class="card" id="device"></section>
+    <section class="card">
+      <div class="sc-head">
+        <h3>示波器</h3>
+        <div class="seg" role="group" aria-label="比較範圍">
+          <button type="button" id="m-dev" aria-pressed="true">選取的裝置：前 vs 後</button>
+          <button type="button" id="m-all" aria-pressed="false">整條鏈：吉他 vs 最終</button>
+        </div>
+        <div class="seg" role="group" aria-label="刻度">
+          <button type="button" id="s-auto" aria-pressed="true">各自放大</button>
+          <button type="button" id="s-same" aria-pressed="false">相同刻度</button>
+        </div>
+      </div>
+      <p class="cap">波形（時間 →，約 21 ms）</p>
+      <canvas class="scope" id="scope"></canvas>
+      <p class="cap">頻譜（50 Hz – 16 kHz，對數）</p>
+      <canvas class="scope spec" id="spec"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--dry)"></i><span id="lgA">輸入</span><span class="v" id="dbA">— dB</span></span>
+        <span><i style="background:var(--accent)"></i><span id="lgB">輸出</span><span class="v" id="dbB">— dB</span></span>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const expMap=(v,a,b)=>a*Math.pow(b/a,v);
+const pct=v=>Math.round(v*100)+'%';
+const C_ACCENT='#ffb347', C_DRY='#7fc4d6', C_OFF='#6b6158', C_MUTED='#a09382', C_LINE='#3b322b';
+const FONT_D='"Barlow Condensed","Arial Narrow","PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif';
+
+/* ───────────── audio helpers ───────────── */
+let ctx=null;
+const G=(v)=>{const g=ctx.createGain();g.gain.value=v;return g};
+const BQ=(type,f,q,gain)=>{const b=ctx.createBiquadFilter();b.type=type;b.frequency.value=f;if(q!=null)b.Q.value=q;if(gain!=null)b.gain.value=gain;return b};
+const sp=(param,v,tc=0.015)=>param.setTargetAtTime(v,ctx.currentTime,tc);
+const link=(...n)=>{for(let i=0;i<n.length-1;i++)n[i].connect(n[i+1]);return n[n.length-1]};
+const shaper=()=>{const w=ctx.createWaveShaper();w.oversample='4x';return w};
+const curveOf=fn=>{const n=4096,c=new Float32Array(n);for(let i=0;i<n;i++)c[i]=fn(i/(n-1)*2-1);return c};
+const lfoOsc=(rate)=>{const o=ctx.createOscillator();o.type='sine';o.frequency.value=rate;o.start();return o};
+const lvl=v=>Math.pow(v*2,2);            // Level 旋鈕：0.5 = 原音量
+const dB=x=>20*Math.log10(Math.max(x,1e-6));
+
+function makeIR(secs){
+  const sr=ctx.sampleRate,n=Math.floor(sr*secs),b=ctx.createBuffer(2,n,sr),pre=Math.floor(sr*0.012);
+  for(let ch=0;ch<2;ch++){const d=b.getChannelData(ch);let lp=0;
+    for(let i=pre;i<n;i++){const t=(i-pre)/(n-pre);const w=Math.random()*2-1;lp+=(w-lp)*lerp(0.85,0.12,t);d[i]=lp*Math.exp(-6.9*t);}}
+  return b;
+}
+
+/* ───────────── device definitions ───────────── */
+const P=(k,label,v,fmt=pct)=>({k,label,v,fmt});
+
+function ampDef(o){
+  const curve=p=>{const g=expMap(p.gain,o.g[0],o.g[1]),b=o.bias,t0=Math.tanh(b);
+    const f1=x=>(Math.tanh(g*x+b)-t0);
+    return o.stages===2?x=>Math.tanh(6*f1(x)):f1;};
+  return Object.assign({cat:'音箱',amp:true,curve,
+    params:[P('gain','Gain',o.d[0]),P('bass','Bass',o.d[1]),P('mid','Mid',o.d[2]),P('treble','Treble',o.d[3]),P('master','Master',o.d[4])],
+    build(p){
+      const inp=G(1),hp=BQ('highpass',o.hp,0.7),pre=BQ('peaking',o.preF,0.8,o.preG),ws=shaper(),
+        dc=BQ('highpass',30,0.7),bass=BQ('lowshelf',o.bassF||110),mid=BQ('peaking',o.midF,0.9),tre=BQ('highshelf',o.treF||3500),
+        cHP=BQ('highpass',80,0.8),cLow=BQ('peaking',115,1.2,o.thump||2),cPk=BQ('peaking',o.cabPkF,1.5,o.cabPkG),
+        lp1=BQ('lowpass',o.cabLP,0.8),lp2=BQ('lowpass',o.cabLP*1.15,0.6),out=G(1);
+      link(inp,hp,pre,ws,dc,bass,mid,tre,cHP,cLow,cPk,lp1,lp2,out);
+      return {in:inp,out,apply(p){
+        ws.curve=curveOf(curve(p));
+        sp(bass.gain,(p.bass-0.5)*24);sp(mid.gain,(p.mid-0.5)*24);sp(tre.gain,(p.treble-0.5)*24);
+        sp(out.gain,Math.pow(p.master*1.6,2)*o.vol);
+      }};
+    }},o);
+}
+
+const DEFS={
+  comp:{name:'Compressor',zh:'壓縮器',cat:'動態',color:'#c8452f',ref:'MXR Dyna Comp、Boss CS-3、Ross Compressor',
+    desc:'把大聲的地方壓小、再整體補回音量，所以小聲的尾音被「拉長」了。Clean 音色的顆粒會更平均，Funk 刷弦與 country 速彈常用。',
+    look:'切到「相同刻度」，撥弦瞬間的尖峰變矮，尾音衰減得比較慢。',
+    params:[P('sustain','Sustain',0.5),P('level','Level',0.5)],
+    build(){const c=ctx.createDynamicsCompressor();c.knee.value=6;c.ratio.value=8;c.attack.value=0.004;c.release.value=0.25;
+      const inp=G(1),mk=G(1),out=G(1);link(inp,c,mk,out);
+      return {in:inp,out,apply(p){sp(c.threshold,-12-38*p.sustain);sp(mk.gain,Math.pow(10,p.sustain*14/20));sp(out.gain,lvl(p.level));}}}},
+  overdrive:{name:'Overdrive',zh:'過載',cat:'增益',color:'#3f9b5a',ref:'Ibanez Tube Screamer TS808 / TS9、Boss SD-1',
+    desc:'柔和的對稱削波（soft clipping），模擬真空管被推到邊緣的感覺。先切掉低頻再失真，所以中頻凸出、低頻不糊，常放在音箱前面「推」音箱。',
+    look:'波峰被圓滑地壓平，不是一刀切。頻譜上會長出奇數倍的諧波。',
+    params:[P('drive','Drive',0.5),P('tone','Tone',0.5,v=>Math.round(expMap(v,700,5500))+' Hz'),P('level','Level',0.5)],
+    curve:p=>{const g=1+p.drive*45;return x=>Math.tanh(g*x)},
+    build(){const inp=G(1),hp=BQ('highpass',720,0.5),ws=shaper(),clean=G(0.5),sum=G(0.6),lp=BQ('lowpass',2500,0.6),out=G(1);
+      link(inp,hp,ws,sum);link(inp,clean,sum);link(sum,lp,out);const cv=this.curve;
+      return {in:inp,out,apply(p){ws.curve=curveOf(cv(p));sp(lp.frequency,expMap(p.tone,700,5500));sp(out.gain,lvl(p.level));}}}},
+  dist:{name:'Distortion',zh:'破音',cat:'增益',color:'#e2701c',ref:'Boss DS-1、ProCo RAT、MXR Distortion+',
+    desc:'硬削波（hard clipping）：訊號放大很多倍之後，被二極體直接「削平」。比 overdrive 更壓縮、更多高頻諧波，聽起來更銳利、更有攻擊性。',
+    look:'波形幾乎變成方波，頂端是平的。轉換曲線中段很陡、兩端直接水平。',
+    params:[P('dist','Dist',0.55),P('tone','Tone',0.5,v=>Math.round(expMap(v,1200,8000))+' Hz'),P('level','Level',0.5)],
+    curve:p=>{const g=4+p.dist*150;return x=>{const y=g*x;return y/Math.pow(1+Math.pow(Math.abs(y),6),1/6)}},
+    build(){const inp=G(1),hp=BQ('highpass',110,0.7),ws=shaper(),lp=BQ('lowpass',3000,0.7),out=G(1);link(inp,hp,ws,lp,out);const cv=this.curve;
+      return {in:inp,out,apply(p){ws.curve=curveOf(cv(p));sp(lp.frequency,expMap(p.tone,1200,8000));sp(out.gain,lvl(p.level)*0.4);}}}},
+  fuzz:{name:'Fuzz',zh:'法茲',cat:'增益',color:'#7c4bb0',ref:'Dallas Arbiter Fuzz Face、EHX Big Muff Pi',
+    desc:'最古老也最極端的失真：電晶體被推到完全飽和，而且上下兩半削得不一樣（非對稱），因此多出偶數諧波，聲音又厚又毛。Hendrix 與 60 年代迷幻搖滾的招牌。',
+    look:'上下不對稱的方波，連很小聲的尾音都被拉成方波，所以延音特別長。',
+    params:[P('fuzz','Fuzz',0.7),P('tone','Tone',0.45,v=>Math.round(expMap(v,900,6000))+' Hz'),P('level','Level',0.5)],
+    curve:p=>{const g=20+p.fuzz*300;return x=>{const y=g*x+0.35;return y>0?Math.tanh(y):0.6*Math.tanh(y*0.45)}},
+    build(){const inp=G(1),ws=shaper(),dc=BQ('highpass',35,0.7),lp=BQ('lowpass',2500,0.8),out=G(1);link(inp,ws,dc,lp,out);const cv=this.curve;
+      return {in:inp,out,apply(p){ws.curve=curveOf(cv(p));sp(lp.frequency,expMap(p.tone,900,6000));sp(out.gain,lvl(p.level)*0.35);}}}},
+  wah:{name:'Wah',zh:'哇哇',cat:'濾波',color:'#34343a',ref:'Dunlop Cry Baby、Vox V847',
+    desc:'一個會移動的共振濾波器，踏板踩下去時共振頻率由低掃到高，聽起來像人嘴在說「哇」。這裡用 Auto 讓它自動來回踩，Rate 轉到 0 就能用 Pedal 手動定位。',
+    look:'看頻譜：有一座山峰在 400 Hz 到 2.2 kHz 之間來回移動。',
+    params:[P('rate','Auto',0.45,v=>v<0.02?'手動':expMap(v,0.3,7).toFixed(1)+' Hz'),P('pos','Pedal',0.5),P('q','Q',0.5,v=>(2+v*8).toFixed(1))],
+    build(){const inp=G(1),bp=BQ('bandpass',940,5),out=G(2.5),lfo=lfoOsc(1),lg=G(0);link(inp,bp,out);link(lfo,lg,bp.detune);
+      return {in:inp,out,stop(){lfo.stop()},apply(p){const auto=p.rate>=0.02;
+        sp(bp.frequency,auto?940:400*Math.pow(5.5,p.pos));sp(lg.gain,auto?1475:0);
+        if(auto)sp(lfo.frequency,expMap(p.rate,0.3,7));sp(bp.Q,2+p.q*8);}}}},
+  chorus:{name:'Chorus',zh:'合唱',cat:'調變',color:'#4aa3d8',ref:'Boss CE-2、EHX Small Clone、Roland JC-120 內建',
+    desc:'把訊號複製一份，延遲十幾毫秒，而且延遲時間緩慢地忽長忽短（音高跟著微微飄），再和原音混在一起，聽起來像兩把吉他同時彈。80 年代 clean 音色的代表。',
+    look:'波形的形狀會慢慢「蠕動」，因為兩份訊號的相位差一直在變。',
+    params:[P('rate','Rate',0.35,v=>expMap(v,0.1,6).toFixed(2)+' Hz'),P('depth','Depth',0.5)],
+    build(){const inp=G(1),d=ctx.createDelay(0.06),dry=G(0.72),wet=G(0.72),out=G(1),lfo=lfoOsc(1),lg=G(0);d.delayTime.value=0.016;
+      link(inp,dry,out);link(inp,d,wet,out);link(lfo,lg,d.delayTime);
+      return {in:inp,out,stop(){lfo.stop()},apply(p){sp(lfo.frequency,expMap(p.rate,0.1,6));sp(lg.gain,p.depth*0.006);}}}},
+  phaser:{name:'Phaser',zh:'相位',cat:'調變',color:'#d94f8c',ref:'MXR Phase 90、EHX Small Stone',
+    desc:'訊號通過一串全通濾波器（只改相位、不改音量），再和原音相加。相位相反的頻率互相抵消，形成幾個凹洞；LFO 讓凹洞在頻譜上來回掃，產生旋轉、流動的感覺。',
+    look:'看頻譜：有幾個凹谷在左右移動。Van Halen 早期的招牌音色。',
+    params:[P('rate','Rate',0.3,v=>expMap(v,0.1,6).toFixed(2)+' Hz'),P('depth','Depth',0.7)],
+    build(){const inp=G(1),dry=G(0.7),wet=G(0.7),fb=G(0.3),out=G(1),lfo=lfoOsc(1),lg=G(0);
+      const ap=[0,1,2,3].map(()=>BQ('allpass',750,0.6));link(inp,...ap,wet,out);link(inp,dry,out);link(ap[3],fb,ap[0]);
+      lfo.connect(lg);ap.forEach(a=>lg.connect(a.detune));
+      return {in:inp,out,stop(){lfo.stop()},apply(p){sp(lfo.frequency,expMap(p.rate,0.1,6));sp(lg.gain,p.depth*1800);}}}},
+  tremolo:{name:'Tremolo',zh:'顫音',cat:'調變',color:'#3d7a6e',ref:'Fender 音箱內建 Tremolo、Boss TR-2',
+    desc:'最單純的調變：音量規律地忽大忽小。50 年代就內建在音箱裡，surf rock 和老派藍調的味道。',
+    look:'把 Rate 調快，波形的整體高度會一脹一縮；頻譜形狀則幾乎不變。',
+    params:[P('rate','Rate',0.5,v=>expMap(v,1,14).toFixed(1)+' Hz'),P('depth','Depth',0.7)],
+    build(){const inp=G(1),g=G(1),out=G(1),lfo=lfoOsc(4),lg=G(0);link(inp,g,out);link(lfo,lg,g.gain);
+      return {in:inp,out,stop(){lfo.stop()},apply(p){sp(lfo.frequency,expMap(p.rate,1,14));sp(g.gain,1-p.depth/2);sp(lg.gain,p.depth/2);}}}},
+  delay:{name:'Delay',zh:'延遲',cat:'空間',color:'#2f6f4f',ref:'MXR Carbon Copy、Boss DM-2、Echoplex 磁帶回音',
+    desc:'把聲音錄下來，過一段時間再放出來，並把一部分送回去重複。這裡模擬類比 / 磁帶式：每次重複高頻都會少一點，回音越來越暗。',
+    look:'用「單音長音」最明顯：原音之後跟著一個個越來越小的複製品。',
+    params:[P('time','Time',0.55,v=>Math.round(expMap(v,0.06,0.9)*1000)+' ms'),P('fb','Repeat',0.4),P('mix','Mix',0.4)],
+    build(){const inp=G(1),d=ctx.createDelay(1.5),lp=BQ('lowpass',2800,0.5),fb=G(0),wet=G(0),out=G(1);
+      link(inp,out);link(inp,d,lp,wet,out);link(lp,fb,d);
+      return {in:inp,out,apply(p){sp(d.delayTime,expMap(p.time,0.06,0.9),0.08);sp(fb.gain,p.fb*0.85);sp(wet.gain,p.mix*1.2);}}}},
+  reverb:{name:'Reverb',zh:'殘響',cat:'空間',color:'#cfc6b3',ref:'Fender 彈簧殘響、Boss RV-6、EHX Holy Grail',
+    desc:'模擬聲音在空間裡無數次反射後的尾巴。這裡用 convolution：把訊號和一段衰減的噪音（脈衝響應）做摺積，Decay 就是那段尾巴的長度。',
+    look:'聲音停了以後波形不會立刻歸零，而是拖著一條慢慢變小的尾巴。',
+    params:[P('decay','Decay',0.45,v=>expMap(v,0.4,6).toFixed(1)+' s'),P('mix','Mix',0.35)],
+    build(){const inp=G(1),wet=G(0),out=G(1);let cv=null;link(inp,out);
+      return {in:inp,out,apply(p,k){
+        if(!cv||k==='decay'){if(cv){inp.disconnect(cv);cv.disconnect();}cv=ctx.createConvolver();cv.buffer=makeIR(expMap(p.decay,0.4,6));inp.connect(cv);cv.connect(wet);}
+        sp(wet.gain,p.mix*2.2);}}}},
+  clean:ampDef({name:'American Clean',zh:'美式清音',color:'#b9bcc0',ref:'Fender Twin Reverb、Deluxe Reverb',
+    desc:'餘裕（headroom）很大的 6L6 管音箱：開很大聲也不太破，中頻微凹、高頻晶亮。最適合當效果器的「畫布」，funk、country、surf 都靠它。',
+    look:'波形幾乎不變形，只有 Gain 開很大時波峰才開始變圓。試著把它拿掉，聽聽沒有喇叭箱濾波的破音有多刺耳。',
+    g:[0.8,9],bias:0.1,hp:70,preF:3000,preG:3,midF:500,treF:3500,cabLP:6000,cabPkF:2800,cabPkG:3,vol:1.6,d:[0.3,0.55,0.4,0.6,0.5],
+    tolex:'#17181a',grille:'#8d949a',weave:'#5c6368',piping:'#d8d8d8',panel:'#1b1b1d',ink:'#e8e8e8',logo:'#f2f2f2'}),
+  chime:ampDef({name:'British Chime',zh:'英式 Class A',color:'#8a5a3c',ref:'Vox AC30（Top Boost）',
+    desc:'EL84 管、沒有負回授的設計，很早就開始破，高頻有一種鈴鐺般的「chime」。The Beatles、Brian May、The Edge 的聲音。',
+    look:'中等 Gain 就能看到波形上下不對稱地變圓，頻譜的高頻諧波比 clean 豐富。',
+    g:[1.5,28],bias:0.28,hp:100,preF:2200,preG:5,midF:800,treF:4000,cabLP:5500,cabPkF:3000,cabPkG:5,vol:1.0,d:[0.45,0.5,0.5,0.6,0.5],
+    tolex:'#151312',grille:'#6b4a35',weave:'#3d2a1e',piping:'#e9dfc8',panel:'#5a1f1f',ink:'#f0e6d0',logo:'#e9c46a'}),
+  british:ampDef({name:'British Stack',zh:'英式堆疊',color:'#caa24a',ref:'Marshall Plexi 1959、JCM800',
+    desc:'EL34 管、中頻厚實的經典搖滾聲。Gain 開一半就是 AC/DC 的 crunch，前面再用 overdrive 推一下就是 80 年代的 hard rock。',
+    look:'波形被明顯削平但邊角還是圓的。把 Mid 轉高，頻譜 750 Hz 附近會整塊凸起。',
+    g:[3,90],bias:0.15,hp:120,preF:900,preG:6,midF:750,treF:3500,cabLP:4800,cabPkF:2400,cabPkG:4,vol:0.8,d:[0.5,0.5,0.6,0.55,0.5],
+    tolex:'#121212',grille:'#2a2a2c',weave:'#4a4a4e',piping:'#f1f1f1',panel:'#c9a13f',ink:'#1a1408',logo:'#f5f5f5'}),
+  highgain:ampDef({name:'High-Gain',zh:'現代高增益',color:'#8f9499',ref:'Mesa/Boogie Dual Rectifier、Peavey 5150',
+    desc:'好幾級前級管串聯放大，增益極高、壓縮感強、低頻緊實。中頻挖掉（scooped mids）就是 90 年代之後的金屬音色。',
+    look:'兩級串聯削波讓波形變成很硬的方波，而且幾乎沒有動態：輕彈重彈一樣大聲。',
+    g:[10,400],bias:0.05,stages:2,hp:140,preF:1200,preG:5,midF:650,treF:3200,cabLP:4400,cabPkF:2200,cabPkG:3,thump:5,vol:0.6,d:[0.65,0.6,0.3,0.6,0.5],
+    tolex:'#0e0e0f',grille:'#3a3d40',weave:'#70757a',piping:'#9aa0a6',panel:'#1c1c1e',ink:'#d6dadd',logo:'#d6dadd'}),
+};
+Object.keys(DEFS).forEach(k=>DEFS[k].type=k);
+
+/* ───────────── synthesized guitar (Karplus-Strong) ───────────── */
+const mf=m=>440*Math.pow(2,(m-69)/12);
+const OPEN=[40,45,50,55,59,64];
+function pluck(out,sr,start,f,dur,vel,mute){
+  const L=sr/f;let N=Math.floor(L-0.5),frac=L-0.5-N;if(frac<0.1){N--;frac+=1}
+  const C=(1-frac)/(1+frac),buf=new Float32Array(N);let lp=0,mean=0;
+  for(let i=0;i<N;i++){const w=Math.random()*2-1;lp+=(w-lp)*0.55;buf[i]=lp;mean+=lp}
+  mean/=N;for(let i=0;i<N;i++)buf[i]-=mean;
+  const off=Math.max(1,Math.floor(N*0.14));const tmp=buf.slice();for(let i=0;i<N;i++)buf[i]=tmp[i]-0.5*tmp[(i+off)%N];
+  const rho=Math.exp(-6.91/((mute?0.22:4.5)*f));
+  const n=Math.floor(dur*sr),s0=Math.floor(start*sr),len=out.length,rel=Math.floor(0.04*sr);
+  let idx=0,pi=0,po=0;
+  for(let i=0;i<n;i++){const cur=buf[idx],avg=rho*0.5*(cur+buf[(idx+1)%N]),y=C*avg+pi-C*po;pi=avg;po=y;buf[idx]=y;idx=(idx+1)%N;
+    let a=vel;if(i>n-rel)a*=(n-i)/rel;if(i<24)a*=i/24;out[(s0+i)%len]+=cur*a;}
+}
+const CH={Em:[0,2,2,0,0,0],C:[null,3,2,0,1,0],G:[3,2,0,0,0,3],D:[null,null,0,2,3,2],Am:[null,0,2,2,1,0]};
+const RIFFS={
+  strum(ev){const b=60/96;['Em','C','G','D'].forEach((c,bar)=>{[[0,1],[1,1],[1.5,0],[2.5,0],[3,1],[3.5,0]].forEach(([bt,down])=>{
+      const t=(bar*4+bt)*b;let s=CH[c].map((f,i)=>f==null?null:[i,f]).filter(Boolean);if(!down)s=s.slice(-4).reverse();
+      s.forEach(([i,f],j)=>ev.push([t+j*0.013,mf(OPEN[i]+f),b*1.6,down?0.9:0.6]));});});return 16*b},
+  arp(ev){const b=60/108/2;['Am','C','G','Em'].forEach((c,bar)=>{const fr=CH[c],bass=fr.findIndex(f=>f!=null);
+      [bass,3,4,3,5,3,4,3].forEach((s,i)=>ev.push([(bar*8+i)*b,mf(OPEN[s]+fr[s]),b*4,i===0?1:0.75]));});return 32*b},
+  power(ev){const e=60/138/2;const M=1,O=0;
+    const bars=[[[40,M,1],[40,M,1],[40,M,1],[43,O,2],[40,M,1],[40,M,1],[45,O,1]],[[40,M,1],[40,M,1],[40,M,1],[46,O,2],[45,O,3]],
+      [[40,M,1],[40,M,1],[40,M,1],[43,O,2],[40,M,1],[40,M,1],[45,O,1]],[[43,O,3],[45,O,3],[40,O,2]]];
+    let t=0;bars.forEach(bar=>bar.forEach(([r,m,l])=>{[0,7,12].forEach((iv,j)=>ev.push([t+j*0.004,mf(r+iv),m?0.16:l*e*0.96,m?0.9:1,m]));t+=l*e}));return t},
+  blues(ev){const b=60/84;[[0,57,.66],[.66,60,.34],[1,62,.66],[1.66,64,.34],[2,67,1],[3,64,.5],[3.5,62,.5],[4,60,.66],[4.66,57,.34],[5,55,.66],[5.66,57,1.6],
+      [8,69,.66],[8.66,67,.34],[9,64,.66],[9.66,67,.34],[10,69,1.5],[11.5,72,.5],[12,69,.5],[12.5,67,.5],[13,64,.5],[13.5,62,.5],[14,57,1.9]]
+      .forEach(([bt,m,l])=>ev.push([bt*b,mf(m),l*b*0.98,0.9]));return 16*b},
+  note(ev){ev.push([0,mf(45),2.9,1]);return 3},
+};
+const bufCache={};
+function getBuffer(key){
+  if(bufCache[key])return bufCache[key];
+  const sr=ctx.sampleRate;let b;
+  if(key==='sine'){b=ctx.createBuffer(1,sr,sr);const d=b.getChannelData(0);for(let i=0;i<sr;i++)d[i]=0.35*Math.sin(2*Math.PI*220*i/sr);}
+  else{const ev=[];const len=RIFFS[key](ev);b=ctx.createBuffer(1,Math.round(len*sr),sr);const d=b.getChannelData(0);
+    ev.forEach(e=>pluck(d,sr,e[0],e[1],e[2],e[3],e[4]));let pk=0;for(let i=0;i<d.length;i++)pk=Math.max(pk,Math.abs(d[i]));
+    const k=0.5/pk;for(let i=0;i<d.length;i++)d[i]*=k;}
+  return bufCache[key]=b;
+}
+
+/* ───────────── engine + chain state ───────────── */
+let uid=1,chain=[],selId=null,playing=false,srcNode=null,inputG,dryAn,master;
+const FFT=2048,dryBuf=new Float32Array(FFT);
+const newAn=()=>{const a=ctx.createAnalyser();a.fftSize=FFT;a.smoothingTimeConstant=0.8;return a};
+
+class Device{
+  constructor(type,params,on=true){this.id=uid++;this.type=type;this.def=DEFS[type];this.on=on;this.p={};this.buf=new Float32Array(FFT);this.pk=0.02;
+    this.def.params.forEach(q=>this.p[q.k]=q.v);Object.assign(this.p,params||{});if(ctx)this.build();}
+  build(){this.in=G(1);this.out=G(1);this.tail=G(1);this.wet=G(this.on?1:0);this.byp=G(this.on?0:1);this.an=newAn();
+    this.fx=this.def.build(this.p);link(this.in,this.byp,this.out);this.in.connect(this.fx.in);link(this.fx.out,this.wet,this.out);
+    this.out.connect(this.an);this.out.connect(this.tail);this.fx.apply(this.p);}
+  set(k,v){this.p[k]=v;if(this.fx)this.fx.apply(this.p,k);}
+  toggle(){this.on=!this.on;if(this.fx){sp(this.wet.gain,this.on?1:0);sp(this.byp.gain,this.on?0:1);}}
+  dispose(){if(!this.fx)return;try{this.fx.stop&&this.fx.stop()}catch(e){}this.in.disconnect();this.tail.disconnect();this.out.disconnect();this.fx.out.disconnect();}
+}
+function ensureCtx(){
+  if(ctx)return;
+  ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+  inputG=G(1);dryAn=newAn();master=G(volGain());
+  const lim=ctx.createDynamicsCompressor();lim.threshold.value=-4;lim.knee.value=0;lim.ratio.value=20;lim.attack.value=0.002;lim.release.value=0.12;
+  link(master,lim,ctx.destination);chain.forEach(d=>d.build());wire();
+}
+function wire(){
+  if(!ctx)return;inputG.disconnect();inputG.connect(dryAn);chain.forEach(d=>d.tail.disconnect());
+  let prev=inputG;chain.forEach(d=>{prev.connect(d.in);prev=d.tail});prev.connect(master);
+}
+const volGain=()=>Math.pow(+$('#vol').value,2)*1.2;
+function stopSrc(){if(srcNode){try{srcNode.stop()}catch(e){}srcNode.disconnect();srcNode=null}}
+function play(){ensureCtx();ctx.resume();stopSrc();srcNode=ctx.createBufferSource();srcNode.buffer=getBuffer($('#src').value);srcNode.loop=true;
+  srcNode.connect(inputG);srcNode.start();playing=true;syncPlay();}
+function stop(){stopSrc();playing=false;syncPlay();}
+function syncPlay(){const b=$('#play');b.textContent=playing?'■ 停止':'▶ 播放';b.classList.toggle('on',playing);}
+
+const sel=()=>chain.find(d=>d.id===selId)||null;
+function addDevice(type,params,on){
+  const def=DEFS[type];
+  if(def.amp){const i=chain.findIndex(d=>d.def.amp);if(i>=0){const old=chain[i];const nd=new Device(type,params,old.on);old.dispose();stage.remove(old);chain[i]=nd;selId=nd.id;changed();return nd;}}
+  if(chain.length>=10)return null;
+  const d=new Device(type,params,on);
+  // 預設插在音箱前面（空間系則放在最後）
+  const ai=chain.findIndex(x=>x.def.amp);
+  if(ai>=0&&def.cat!=='空間'&&!def.amp)chain.splice(ai,0,d);else chain.push(d);
+  selId=d.id;changed();return d;
+}
+function removeDevice(d){const i=chain.indexOf(d);chain.splice(i,1);d.dispose();stage.remove(d);if(selId===d.id)selId=chain.length?chain[Math.min(i,chain.length-1)].id:null;changed();}
+function moveDevice(d,dir){const i=chain.indexOf(d),j=i+dir;if(j<0||j>=chain.length)return;chain.splice(i,1);chain.splice(j,0,d);changed();}
+function changed(){wire();stage.layout();renderChain();renderDevice();}
+const PRESETS={
+  blues:[['overdrive',{drive:0.45}],['british',{gain:0.42}],['reverb',{mix:0.25}]],
+  metal:[['overdrive',{drive:0.12,level:0.75,tone:0.6}],['highgain',{gain:0.7}],['delay',{mix:0.12,time:0.5,fb:0.25}]],
+  ambient:[['comp',{}],['chorus',{}],['clean',{}],['delay',{time:0.62,fb:0.55,mix:0.45}],['reverb',{decay:0.7,mix:0.5}]],
+  psych:[['fuzz',{}],['phaser',{rate:0.25}],['british',{gain:0.25}],['reverb',{mix:0.3}]],
+  funk:[['comp',{sustain:0.6}],['wah',{rate:0.5}],['clean',{}]],
+  surf:[['tremolo',{rate:0.55}],['clean',{treble:0.7}],['reverb',{decay:0.6,mix:0.55}]],
+  di:[],
+};
+function applyPreset(k){chain.forEach(d=>{d.dispose();stage.remove(d)});chain=PRESETS[k].map(([t,p])=>new Device(t,p));
+  const pick=chain.find(d=>!d.def.amp)||chain[0];selId=pick?pick.id:null;changed();}
+
+/* ───────────── chain strip + device panel ───────────── */
+function renderChain(){
+  let h='<span class="end">吉他</span>';
+  chain.forEach((d,i)=>{h+=`<span class="arrow">▸</span><div class="chip ${d.id===selId?'sel':''} ${d.on?'':'off'}" style="--sw:${d.def.color}" data-id="${d.id}">
+    <button type="button" class="nm" data-a="sel" title="選取"><span class="dot"></span>${d.def.name}</button>
+    <button type="button" class="mini" data-a="tog" title="開 / 關">${d.on?'ON':'OFF'}</button>
+    <button type="button" class="mini" data-a="l" title="往前移" ${i===0?'disabled':''}>◀</button>
+    <button type="button" class="mini" data-a="r" title="往後移" ${i===chain.length-1?'disabled':''}>▶</button>
+    <button type="button" class="mini" data-a="x" title="移除">✕</button></div>`;});
+  h+='<span class="arrow">▸</span><span class="end">輸出</span>';
+  $('#chain').innerHTML=h;
+}
+$('#chain').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const d=chain.find(x=>x.id===+b.closest('.chip').dataset.id);if(!d)return;
+  const a=b.dataset.a;if(a==='sel'){selId=d.id;renderChain();renderDevice();}else if(a==='tog'){toggleDevice(d)}else if(a==='l')moveDevice(d,-1);else if(a==='r')moveDevice(d,1);else if(a==='x')removeDevice(d);});
+function toggleDevice(d){d.toggle();renderChain();renderDevice();}
+
+function renderDevice(){
+  const d=sel(),el=$('#device');
+  if(!d){el.innerHTML=`<div class="dev-head"><div><h2>吉他直出 <small>DI</small></h2><p class="ref">訊號鏈目前是空的</p></div></div>
+    <p class="desc">現在聽到的是吉他拾音器的原始訊號，沒有任何效果器，也沒有音箱。用上方的「加入裝置」或「套用經典組合」開始疊加。</p>
+    <p class="look"><b>順序很重要：</b>同樣的幾台裝置，前後對調聲音會差很多。例如 Reverb 放在破音前面，尾音會被一起削波變得很糊。</p>`;return;}
+  const def=d.def;
+  el.innerHTML=`<div class="dev-head" style="--sw:${def.color}"><span class="swatch"></span>
+      <div><h2>${def.name}<small>${def.zh}・${def.cat}</small></h2><p class="ref">代表機種：${def.ref}</p></div>
+      <button type="button" id="dev-toggle" class="toggle ${d.on?'on':''}" aria-pressed="${d.on}">${d.on?'ON':'BYPASS'}</button></div>
+    <p class="desc">${def.desc}</p><p class="look"><b>看波形：</b>${def.look}</p>
+    <div class="params">${def.params.map(q=>`<div class="param"><label for="p-${def.type}-${q.k}">${q.label}</label>
+      <input type="range" id="p-${def.type}-${q.k}" data-k="${q.k}" min="0" max="1" step="0.01" value="${d.p[q.k]}"><output>${q.fmt(d.p[q.k])}</output></div>`).join('')}</div>
+    ${def.curve?`<figure class="curve"><canvas id="curve" width="264" height="264"></canvas><figcaption>轉換曲線：橫軸是輸入電壓、縱軸是輸出。斜直線代表原樣通過；曲線越早變平，就削得越兇、諧波越多。拉 ${def.params[0].label} 看它怎麼變。</figcaption></figure>`:''}`;
+  drawCurve();
+}
+$('#device').addEventListener('input',e=>{const k=e.target.dataset.k,d=sel();if(!k||!d)return;const v=+e.target.value;d.set(k,v);
+  e.target.nextElementSibling.textContent=d.def.params.find(q=>q.k===k).fmt(v);stage.knobs(d);drawCurve();});
+$('#device').addEventListener('click',e=>{if(e.target.id==='dev-toggle'){const d=sel();if(d)toggleDevice(d)}});
+function drawCurve(){
+  const c=$('#curve'),d=sel();if(!c||!d||!d.def.curve)return;const g=c.getContext('2d'),W=c.width,pad=18,S=W-pad*2;
+  g.clearRect(0,0,W,W);g.strokeStyle=C_LINE;g.lineWidth=1;g.beginPath();g.moveTo(W/2,pad);g.lineTo(W/2,W-pad);g.moveTo(pad,W/2);g.lineTo(W-pad,W/2);g.stroke();
+  g.setLineDash([5,5]);g.strokeStyle=C_OFF;g.beginPath();g.moveTo(pad,W-pad);g.lineTo(W-pad,pad);g.stroke();g.setLineDash([]);
+  const fn=d.def.curve(d.p);let mx=0;for(let i=0;i<=200;i++)mx=Math.max(mx,Math.abs(fn(i/100-1)));mx=Math.max(mx,1);
+  g.strokeStyle=C_ACCENT;g.lineWidth=3;g.lineJoin='round';g.beginPath();
+  for(let i=0;i<=S;i++){const x=i/S*2-1,y=fn(x)/mx;const px=pad+i,py=W/2-y*S/2;i?g.lineTo(px,py):g.moveTo(px,py)}g.stroke();
+  g.fillStyle=C_MUTED;g.font='20px '+FONT_D;g.fillText('IN →',W-pad-44,W/2+22);g.fillText('OUT ↑',W/2+8,pad+14);
+}
+
+/* ───────────── controls ───────────── */
+(function(){const cats=['動態','增益','濾波','調變','空間','音箱'];let h='<option value="">＋ 加入裝置…</option>';
+  cats.forEach(c=>{h+=`<optgroup label="${c==='音箱'?'音箱（一次一台，會替換現有的）':c}">`+Object.values(DEFS).filter(d=>d.cat===c).map(d=>`<option value="${d.type}">${d.name}　${d.zh}</option>`).join('')+'</optgroup>'});
+  $('#add').innerHTML=h;})();
+$('#add').addEventListener('change',e=>{if(e.target.value)addDevice(e.target.value);e.target.value='';});
+$('#preset').addEventListener('change',e=>{if(e.target.value)applyPreset(e.target.value);e.target.value='';});
+$('#play').addEventListener('click',()=>playing?stop():play());
+$('#src').addEventListener('change',()=>{if(playing)play()});
+$('#vol').addEventListener('input',()=>{if(ctx)sp(master.gain,volGain())});
+$('#file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;ensureCtx();
+  try{const ab=await f.arrayBuffer();bufCache.file=await ctx.decodeAudioData(ab);
+    let o=$('#src option[value=file]');if(!o){o=document.createElement('option');o.value='file';$('#src').appendChild(o)}o.textContent='你的錄音：'+f.name.slice(0,24);$('#src').value='file';play();
+  }catch(err){e.target.parentElement.firstChild.textContent='這個檔案無法解碼，換一個 wav / mp3 試試';}});
+let mode='dev',sameScale=false;
+const seg=(a,b,fn)=>{[a,b].forEach((id,i)=>$(id).addEventListener('click',()=>{$(a).setAttribute('aria-pressed',i===0);$(b).setAttribute('aria-pressed',i===1);fn(i)}))};
+seg('#m-dev','#m-all',i=>mode=i?'all':'dev');seg('#s-auto','#s-same',i=>sameScale=!!i);
+
+/* ───────────── scopes (2D panel) ───────────── */
+function findTrig(b){let pk=0;for(let i=0;i<FFT;i++){const a=Math.abs(b[i]);if(a>pk)pk=a}if(pk<1e-4)return 0;const th=-0.3*pk;let armed=false;
+  for(let i=1;i<FFT/2;i++){if(b[i]<th)armed=true;else if(armed&&b[i-1]<0&&b[i]>=0)return i}return 0;}
+const peakOf=b=>{let pk=0;for(let i=0;i<FFT;i++){const a=Math.abs(b[i]);if(a>pk)pk=a}return pk};
+const WIN=FFT/2;
+function fit(c){const r=c.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(c.width!==w||c.height!==h){c.width=w;c.height=h}return dpr}
+function trace(g,buf,t0,W,H,scale,color,lw){g.strokeStyle=color;g.lineWidth=lw;g.lineJoin='round';g.beginPath();const mid=H/2,amp=H/2*0.9;
+  for(let i=0;i<WIN;i++){const x=i/(WIN-1)*W,y=mid-clamp(buf[t0+i]*scale,-1.08,1.08)*amp;i?g.lineTo(x,y):g.moveTo(x,y)}g.stroke();}
+const zero=new Float32Array(FFT),specA=new Float32Array(FFT/2),specB=new Float32Array(FFT/2);
+const pkA={pk:0.02},pkB={pk:0.02};let lastDb=0,lastPair='';
+function pair(){
+  const d=sel();
+  if(mode==='dev'&&d){const i=chain.indexOf(d),pv=i>0?chain[i-1]:null;
+    return {a:pv?pv.buf:dryBuf,aAn:pv?pv.an:dryAn,b:d.buf,bAn:d.an,la:(pv?pv.def.name:'吉他')+' 輸出（進 '+d.def.name+' 之前）',lb:d.def.name+' 輸出'+(d.on?'':'（BYPASS）')};}
+  const last=chain[chain.length-1];
+  return {a:dryBuf,aAn:dryAn,b:last?last.buf:dryBuf,bAn:last?last.an:dryAn,la:'吉他原始訊號',lb:'最終輸出'};
+}
+function drawPanel(t0,now){
+  const pr=pair(),sc=$('#scope'),sp2=$('#spec');
+  if(pr.la+pr.lb!==lastPair){lastPair=pr.la+pr.lb;$('#lgA').textContent=pr.la;$('#lgB').textContent=pr.lb;pkA.pk=pkB.pk=0.02;}
+  const a=ctx?pr.a:zero,b=ctx?pr.b:zero,pa=peakOf(a),pb=peakOf(b);
+  pkA.pk=Math.max(pkA.pk*0.995,pa,0.02);pkB.pk=Math.max(pkB.pk*0.995,pb,0.02);
+  let sA=1/pkA.pk,sB=1/pkB.pk;if(sameScale)sA=sB=1/Math.max(pkA.pk,pkB.pk);
+  let dpr=fit(sc),g=sc.getContext('2d'),W=sc.width,H=sc.height;g.clearRect(0,0,W,H);
+  g.strokeStyle=C_LINE;g.lineWidth=1;g.beginPath();for(let i=1;i<8;i++){g.moveTo(W*i/8,0);g.lineTo(W*i/8,H)}g.moveTo(0,H/2);g.lineTo(W,H/2);g.stroke();
+  trace(g,a,t0,W,H,sA,C_DRY,1.5*dpr);trace(g,b,t0,W,H,sB,C_ACCENT,2.2*dpr);
+  if(!playing){g.fillStyle=C_MUTED;g.font=`${15*dpr}px ${FONT_D}`;g.fillText('按「播放」開始',12*dpr,22*dpr)}
+  // spectrum
+  dpr=fit(sp2);g=sp2.getContext('2d');W=sp2.width;H=sp2.height;g.clearRect(0,0,W,H);
+  const f0=50,f1=16000,lx=f=>Math.log(f/f0)/Math.log(f1/f0)*W,ly=db=>clamp((-15-db)/85,0,1)*H;
+  g.strokeStyle=C_LINE;g.fillStyle=C_MUTED;g.font=`${11*dpr}px ${FONT_D}`;g.lineWidth=1;g.beginPath();
+  [100,200,500,1000,2000,5000,10000].forEach(f=>{const x=lx(f);g.moveTo(x,0);g.lineTo(x,H);g.fillText(f>=1000?f/1000+'k':f,x+3*dpr,H-4*dpr)});g.stroke();
+  if(ctx){pr.aAn.getFloatFrequencyData(specA);pr.bAn.getFloatFrequencyData(specB);const bw=ctx.sampleRate/FFT;
+    const path=(s)=>{g.beginPath();let first=true;for(let i=2;i<FFT/2;i++){const f=i*bw;if(f<f0)continue;if(f>f1)break;const x=lx(f),y=ly(s[i]);first?g.moveTo(x,y):g.lineTo(x,y);first=false}};
+    path(specB);g.lineTo(W,H);g.lineTo(0,H);g.closePath();g.fillStyle='rgba(255,179,71,0.14)';g.fill();
+    path(specA);g.strokeStyle=C_DRY;g.lineWidth=1.3*dpr;g.stroke();path(specB);g.strokeStyle=C_ACCENT;g.lineWidth=2*dpr;g.stroke();}
+  if(now-lastDb>200){lastDb=now;const f=p=>p<1e-4?'— dB':'峰值 '+dB(p).toFixed(1)+' dB';$('#dbA').textContent=f(pkA.pk>0.021?pkA.pk:pa);$('#dbB').textContent=f(pkB.pk>0.021?pkB.pk:pb);}
+}
+
+/* ───────────── 3D stage ───────────── */
+const stage=(function(){
+  const noop={layout(){},remove(){},knobs(){},render(){}};
+  if(!window.THREE)return fail();
+  const T=THREE,canvas=$('#gl');let renderer;
+  try{renderer=new T.WebGLRenderer({canvas,antialias:true})}catch(e){return fail()}
+  function fail(){const d=document.createElement('div');d.className='nogl';d.textContent='這個瀏覽器無法啟用 WebGL，3D 舞台停用；下方的訊號鏈、聲音與示波器仍可正常使用。';$('#stage').appendChild(d);return noop}
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.outputEncoding=T.sRGBEncoding;renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;
+  const scene=new T.Scene();scene.background=new T.Color('#0d0b0a');scene.fog=new T.Fog('#0d0b0a',60,140);
+  const cam=new T.PerspectiveCamera(38,2,0.1,200);
+  scene.add(new T.HemisphereLight('#ffe9cc','#1a1410',0.6));
+  const spot=new T.SpotLight('#fff1dc',1.25,80,0.7,0.5,1);spot.position.set(3,16,12);spot.castShadow=true;spot.shadow.mapSize.set(2048,2048);spot.shadow.bias=-0.0004;scene.add(spot);scene.add(spot.target);
+  const rim=new T.PointLight('#ff9a3c',0.6,40);rim.position.set(-8,5,-6);scene.add(rim);
+  const floor=new T.Mesh(new T.PlaneGeometry(200,200),new T.MeshStandardMaterial({color:'#0f0c0a',roughness:0.95}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+
+  const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
+  const tex=c=>{const t=new T.CanvasTexture(c);t.encoding=T.sRGBEncoding;t.anisotropy=4;return t};
+  const lum=hex=>{const c=new T.Color(hex);return 0.299*c.r+0.587*c.g+0.114*c.b};
+  const std=(color,o)=>new T.MeshStandardMaterial(Object.assign({color,roughness:0.6,metalness:0.1},o));
+  const M_BLACK=std('#151515',{roughness:0.45}),M_METAL=std('#c9ccd0',{roughness:0.25,metalness:0.9}),M_WHITE=std('#f2efe8');
+
+  // 地毯
+  const rugC=mk(512,256);(g=>{g.fillStyle='#5a1c1c';g.fillRect(0,0,512,256);g.strokeStyle='#c9a13f';g.lineWidth=6;g.strokeRect(14,14,484,228);g.strokeStyle='#2a0d0d';g.lineWidth=10;g.strokeRect(30,30,452,196);
+    g.strokeStyle='#7d2a2a';g.lineWidth=2;for(let x=60;x<460;x+=28)for(let y=56;y<210;y+=28){g.beginPath();g.moveTo(x,y-9);g.lineTo(x+9,y);g.lineTo(x,y+9);g.lineTo(x-9,y);g.closePath();g.stroke()}})(rugC.getContext('2d'));
+  const rug=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshStandardMaterial({map:tex(rugC),roughness:1}));rug.rotation.x=-Math.PI/2;rug.position.y=0.006;rug.receiveShadow=true;scene.add(rug);
+  // 選取框
+  const selC=mk(256,256);(g=>{g.strokeStyle=C_ACCENT;g.lineWidth=10;g.shadowColor=C_ACCENT;g.shadowBlur=18;g.strokeRect(22,22,212,212)})(selC.getContext('2d'));
+  const selM=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({map:tex(selC),transparent:true,depthWrite:false,blending:T.AdditiveBlending}));selM.rotation.x=-Math.PI/2;selM.position.y=0.02;scene.add(selM);
+
+  function knob(r){const g=new T.Group(),inner=new T.Group();const c=new T.Mesh(new T.CylinderGeometry(r,r*1.08,0.13,24),M_BLACK);c.position.y=0.065;
+    const m=new T.Mesh(new T.BoxGeometry(0.035,0.02,r),M_WHITE);m.position.set(0,0.135,-r/2);inner.add(c,m);g.add(inner);g.userData.inner=inner;return g}
+  const setKnob=(k,v)=>{k.userData.inner.rotation.y=-(v-0.5)*4.712};
+  function scopePlane(w,h){const c=mk(Math.round(128*w/h),128),t=tex(c);t.minFilter=T.LinearFilter;t.generateMipmaps=false;
+    const m=new T.Mesh(new T.PlaneGeometry(w,h),new T.MeshBasicMaterial({map:t,transparent:true,depthWrite:false,side:T.DoubleSide}));m.raycast=()=>{};m.rotation.x=-0.22;m.renderOrder=5;
+    return {mesh:m,c,g:c.getContext('2d'),t}}
+  function drawMini(s,buf,t0,o,color,label){const g=s.g,W=s.c.width,H=s.c.height;g.clearRect(0,0,W,H);g.fillStyle='rgba(13,11,10,0.62)';g.fillRect(0,0,W,H);
+    g.strokeStyle=color;g.globalAlpha=0.45;g.lineWidth=2;g.strokeRect(1,1,W-2,H-2);g.globalAlpha=1;
+    const pk=peakOf(buf);o.pk=Math.max(o.pk*0.995,pk,0.02);const sc=1/o.pk,mid=H/2+12,amp=(H/2-20);
+    const path=()=>{g.beginPath();const n=Math.min(W,256);for(let i=0;i<n;i++){const y=mid-clamp(buf[t0+Math.floor(i/(n-1)*(WIN-1))]*sc,-1.05,1.05)*amp,x=i/(n-1)*W;i?g.lineTo(x,y):g.moveTo(x,y)}};
+    g.lineJoin='round';g.strokeStyle=color;g.globalAlpha=0.3;g.lineWidth=8;path();g.stroke();g.globalAlpha=1;g.lineWidth=2.6;path();g.stroke();
+    g.fillStyle=color;g.font='600 24px '+FONT_D;g.fillText(label,9,25);s.t.needsUpdate=true}
+
+  function buildPedal(d){
+    const def=d.def,W=1.4,Hh=0.45,D=2.2,grp=new T.Group(),ink=lum(def.color)>0.55?'#17130f':'#f6f0e4';
+    const c=mk(256,402),g=c.getContext('2d');g.fillStyle=def.color;g.fillRect(0,0,256,402);
+    const gr=g.createLinearGradient(0,0,0,402);gr.addColorStop(0,'rgba(255,255,255,0.14)');gr.addColorStop(1,'rgba(0,0,0,0.18)');g.fillStyle=gr;g.fillRect(0,0,256,402);
+    g.strokeStyle=ink;g.globalAlpha=0.5;g.lineWidth=3;g.strokeRect(10,10,236,382);g.globalAlpha=1;g.fillStyle=ink;g.textAlign='center';
+    const ps=def.params.slice(0,3),xs=ps.length===2?[-0.33,0.33]:[-0.43,0,0.43];
+    g.font='600 19px '+FONT_D;ps.forEach((q,i)=>g.fillText(q.label.toUpperCase(),128+xs[i]/W*256,138));
+    g.font='700 '+(def.name.length>9?36:42)+'px '+FONT_D;g.fillText(def.name.toUpperCase(),128,238);g.font='500 20px '+FONT_D;g.fillText(def.zh,128,268);
+    const side=std(def.color,{roughness:0.45,metalness:0.35}),top=new T.MeshStandardMaterial({map:tex(c),roughness:0.5,metalness:0.25});
+    const body=new T.Mesh(new T.BoxGeometry(W,Hh,D),[side,side,top,side,side,side]);body.position.y=Hh/2+0.01;grp.add(body);
+    const knobs=ps.map((q,i)=>{const k=knob(0.15);k.position.set(xs[i],Hh+0.01,-0.63);grp.add(k);return {k,key:q.k}});
+    const ring=new T.Mesh(new T.CylinderGeometry(0.2,0.2,0.04,24),M_METAL);ring.position.set(0,Hh+0.03,0.68);
+    const sw=new T.Mesh(new T.CylinderGeometry(0.13,0.15,0.16,24),M_METAL);sw.position.set(0,Hh+0.09,0.68);sw.userData.role='switch';ring.userData.role='switch';grp.add(ring,sw);
+    const led=new T.Mesh(new T.SphereGeometry(0.06,16,12),new T.MeshStandardMaterial({color:'#300',emissive:'#ff2a1a',emissiveIntensity:0}));led.position.set(0,Hh+0.03,-0.22);grp.add(led);
+    [-1,1].forEach(s=>{const j=new T.Mesh(new T.CylinderGeometry(0.09,0.09,0.12,12),M_METAL);j.rotation.z=Math.PI/2;j.position.set(s*(W/2+0.05),0.26,-0.2);grp.add(j)});
+    const sc=scopePlane(1.85,0.8);sc.mesh.position.set(0,1.65,-0.2);grp.add(sc.mesh);
+    return {grp,w:W,d:D,knobs,led,sc,ledColor:'#ff2a1a'};
+  }
+  function buildAmp(d){
+    const def=d.def,W=4.2,Hh=3.0,D=1.6,grp=new T.Group(),c=mk(840,600),g=c.getContext('2d');
+    g.fillStyle=def.tolex;g.fillRect(0,0,840,600);g.fillStyle=def.grille;g.fillRect(40,165,760,395);g.strokeStyle=def.weave;g.lineWidth=1.5;g.beginPath();
+    if(def.type==='chime'){for(let i=-400;i<800;i+=22){g.moveTo(40+i,165);g.lineTo(40+i+395,560);g.moveTo(40+i+395,165);g.lineTo(40+i,560)}}
+    else{for(let x=48;x<800;x+=9){g.moveTo(x,165);g.lineTo(x,560)}for(let y=173;y<560;y+=9){g.moveTo(40,y);g.lineTo(800,y)}}
+    g.save();g.beginPath();g.rect(40,165,760,395);g.clip();g.beginPath();
+    if(def.type==='chime'){for(let i=-400;i<800;i+=22){g.moveTo(40+i,165);g.lineTo(40+i+395,560);g.moveTo(40+i+395,165);g.lineTo(40+i,560)}}
+    else{for(let x=48;x<800;x+=9){g.moveTo(x,165);g.lineTo(x,560)}for(let y=173;y<560;y+=9){g.moveTo(40,y);g.lineTo(800,y)}}
+    g.stroke();g.restore();
+    g.strokeStyle=def.piping;g.lineWidth=5;g.strokeRect(40,165,760,395);g.fillStyle=def.panel;g.fillRect(40,35,760,110);
+    g.fillStyle=def.ink;g.textAlign='center';g.font='600 20px '+FONT_D;def.params.forEach((q,i)=>g.fillText(q.label.toUpperCase(),420+(i-2)*0.62/W*840,136));
+    g.fillText('STANDBY',420-1.72/W*840,136);
+    g.textAlign='left';g.font='italic 700 46px '+FONT_D;g.fillStyle=def.logo;g.fillText(def.name,66,222);g.font='500 20px '+FONT_D;g.fillText(def.zh,68,250);
+    const side=std(def.tolex,{roughness:0.9}),front=new T.MeshStandardMaterial({map:tex(c),roughness:0.85});
+    const body=new T.Mesh(new T.BoxGeometry(W,Hh,D),[side,side,side,side,front,side]);body.position.y=Hh/2+0.01;grp.add(body);
+    const py=Hh*(1-85/600)+0.01;
+    const knobs=def.params.map((q,i)=>{const k=knob(0.13);k.rotation.x=Math.PI/2;k.position.set((i-2)*0.62,py,D/2);grp.add(k);return {k,key:q.k}});
+    const sw=new T.Mesh(new T.BoxGeometry(0.16,0.26,0.16),M_METAL);sw.position.set(-1.72,py,D/2+0.05);sw.userData.role='switch';grp.add(sw);
+    const led=new T.Mesh(new T.SphereGeometry(0.075,16,12),new T.MeshStandardMaterial({color:'#320',emissive:'#ffb347',emissiveIntensity:0}));led.position.set(1.72,py,D/2+0.03);grp.add(led);
+    const handle=new T.Mesh(new T.BoxGeometry(1.1,0.09,0.22),M_BLACK);handle.position.set(0,Hh+0.08,0);grp.add(handle);
+    const sc=scopePlane(3.9,1.1);sc.mesh.position.set(0,Hh+1.0,0);grp.add(sc.mesh);
+    return {grp,w:W,d:D,knobs,led,sc};
+  }
+  // 吉他（訊號起點）
+  const guitar=(function(){const g=new T.Group(),body=std('#3a9c8f',{roughness:0.3,metalness:0.2}),cream=std('#efe6d2'),wood=std('#c79a5e'),dark=std('#2a1a12');
+    const cyl=(r,y,m,sx=1)=>{const o=new T.Mesh(new T.CylinderGeometry(r,r,0.2,40),m);o.rotation.x=Math.PI/2;o.scale.x=sx;o.position.y=y;return o};
+    g.add(cyl(0.9,0.95,body,1.05),cyl(0.68,1.85,body,1.05));
+    const pg=cyl(0.5,1.25,cream);pg.scale.z=0.2;pg.position.z=0.1;pg.position.x=0.18;g.add(pg);
+    const neck=new T.Mesh(new T.BoxGeometry(0.2,2.5,0.09),dark);neck.position.set(0,3.35,0.06);g.add(neck);
+    const head=new T.Mesh(new T.BoxGeometry(0.34,0.7,0.08),wood);head.position.set(0.03,4.9,0.03);g.add(head);
+    [1.15,1.75].forEach(y=>{const p=new T.Mesh(new T.BoxGeometry(0.5,0.16,0.06),M_BLACK);p.position.set(0,y,0.13);g.add(p)});
+    const br=new T.Mesh(new T.BoxGeometry(0.5,0.1,0.07),M_METAL);br.position.set(0,0.72,0.13);g.add(br);
+    const st=new T.Mesh(new T.BoxGeometry(0.15,4.1,0.006),std('#d9d9d9',{metalness:0.8,roughness:0.3}));st.position.set(0,2.75,0.125);g.add(st);
+    g.scale.setScalar(0.78);g.rotation.x=-0.16;g.rotation.z=0.06;g.position.z=-0.3;
+    const wrap=new T.Group();wrap.add(g);const sc=scopePlane(2.3,0.9);sc.mesh.position.set(0,4.8,-0.4);wrap.add(sc.mesh);scene.add(wrap);return {grp:wrap,w:1.9,sc,pk:0.02}})();
+  // 輸出
+  const outBox=(function(){const c=mk(256,200),g=c.getContext('2d');g.fillStyle='#24201c';g.fillRect(0,0,256,200);g.fillStyle='#ece3d4';g.textAlign='center';g.font='700 46px '+FONT_D;g.fillText('OUTPUT',128,100);g.font='500 24px '+FONT_D;g.fillText('輸出到喇叭 / 耳機',128,140);
+    const s=std('#24201c'),m=new T.Mesh(new T.BoxGeometry(1.3,0.4,1.0),[s,s,new T.MeshStandardMaterial({map:tex(c),roughness:0.6}),s,s,s]);m.position.y=0.21;const grp=new T.Group();grp.add(m);scene.add(grp);return {grp,w:1.3}})();
+
+  const objs=new Map();let cables=[],fitR=14;
+  const cableMat=std('#0c0c0c',{roughness:0.5});
+  function shadows(g){g.traverse(o=>{if(o.isMesh&&o.material&&!o.material.transparent){o.castShadow=true;o.receiveShadow=true}})}
+  shadows(guitar.grp);shadows(outBox.grp);
+  function layout(){
+    const GAP=0.6,items=[guitar,...chain.map(d=>{let o=objs.get(d.id);if(!o){o=d.def.amp?buildAmp(d):buildPedal(d);o.grp.userData.devId=d.id;o.fresh=true;shadows(o.grp);scene.add(o.grp);objs.set(d.id,o);knobs(d)}return o}),outBox];
+    const total=items.reduce((s,o)=>s+o.w,0)+GAP*(items.length-1);let x=-total/2;
+    items.forEach(o=>{o.tx=x+o.w/2;x+=o.w+GAP;if(o.fresh||o===guitar||o===outBox){o.grp.position.x=o.tx;o.fresh=false}});
+    cables.forEach(m=>{scene.remove(m);m.geometry.dispose()});cables=[];
+    for(let i=0;i<items.length-1;i++){const a=items[i],b=items[i+1],x1=a.tx+(a===guitar?0.2:a.w/2+0.08),x2=b.tx-b.w/2-0.08,y1=a===guitar?0.5:0.26;
+      const cv=new T.CatmullRomCurve3([new T.Vector3(x1,y1,-0.2),new T.Vector3(x1+0.1,y1*0.6,0.05),new T.Vector3((x1+x2)/2,0.05,0.5),new T.Vector3(x2-0.12,0.2,0),new T.Vector3(x2,0.26,-0.2)]);
+      const m=new T.Mesh(new T.TubeGeometry(cv,24,0.04,6),cableMat);m.castShadow=true;scene.add(m);cables.push(m)}
+    rug.scale.set(total+3,4.6,1);
+    const hf=2*Math.atan(Math.tan(cam.fov*Math.PI/360)*cam.aspect);fitR=clamp((total/2+1.2)/Math.tan(hf/2),9,60);orbit.tr=fitR;
+  }
+  function remove(d){const o=objs.get(d.id);if(!o)return;scene.remove(o.grp);o.grp.traverse(m=>{if(m.isMesh){m.geometry.dispose()}});objs.delete(d.id)}
+  function knobs(d){const o=objs.get(d.id);if(o)o.knobs.forEach(k=>setKnob(k.k,d.p[k.key]))}
+
+  // 視角控制
+  const orbit={az:0,pol:1.12,r:14,taz:0,tpol:1.12,tr:14};
+  const ptrs=new Map();let moved=0,pinch=0;
+  canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);moved=0;pinch=0});
+  canvas.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(!p)return;const dx=e.clientX-p[0],dy=e.clientY-p[1];p[0]=e.clientX;p[1]=e.clientY;moved+=Math.abs(dx)+Math.abs(dy);
+    if(ptrs.size===1){orbit.taz=clamp(orbit.taz-dx*0.006,-1.25,1.25);orbit.tpol=clamp(orbit.tpol-dy*0.005,0.3,1.5)}
+    else if(ptrs.size===2){const a=[...ptrs.values()],dist=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);if(pinch)orbit.tr=clamp(orbit.tr*pinch/dist,4,70);pinch=dist}});
+  const up=e=>{if(!ptrs.has(e.pointerId))return;const single=ptrs.size===1;ptrs.delete(e.pointerId);pinch=0;if(single&&moved<7&&e.type==='pointerup')click(e)};
+  canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);
+  canvas.addEventListener('wheel',e=>{e.preventDefault();orbit.tr=clamp(orbit.tr*Math.exp(e.deltaY*0.0012),4,70)},{passive:false});
+  const ray=new T.Raycaster(),v2=new T.Vector2();
+  function click(e){const r=canvas.getBoundingClientRect();v2.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(v2,cam);
+    const hit=ray.intersectObjects([...objs.values()].map(o=>o.grp),true)[0];if(!hit)return;let o=hit.object,isSw=o.userData.role==='switch';while(o&&!o.userData.devId)o=o.parent;if(!o)return;
+    const d=chain.find(x=>x.id===o.userData.devId);if(!d)return;selId=d.id;if(isSw)d.toggle();renderChain();renderDevice()}
+  function resize(){const r=$('#stage').getBoundingClientRect();if(!r.width)return;renderer.setSize(r.width,r.height,false);cam.aspect=r.width/r.height;cam.updateProjectionMatrix();layout()}
+  new ResizeObserver(resize).observe($('#stage'));
+
+  function render(t0){
+    orbit.az=lerp(orbit.az,orbit.taz,0.15);orbit.pol=lerp(orbit.pol,orbit.tpol,0.15);orbit.r=lerp(orbit.r,orbit.tr,0.1);
+    const ty=1.5,sp_=Math.sin(orbit.pol);cam.position.set(orbit.r*sp_*Math.sin(orbit.az),ty+orbit.r*Math.cos(orbit.pol),orbit.r*sp_*Math.cos(orbit.az));cam.lookAt(0,ty,0);
+    drawMini(guitar.sc,ctx?dryBuf:zero,t0,guitar,C_DRY,'吉他原始訊號');
+    let so=null;
+    chain.forEach(d=>{const o=objs.get(d.id);if(!o)return;o.grp.position.x=lerp(o.grp.position.x,o.tx,0.18);
+      o.led.material.emissiveIntensity=d.on?2.2:0;
+      const col=d.on?(lum(d.def.color)<0.2?'#d8d2c6':d.def.color):C_OFF;drawMini(o.sc,ctx?d.buf:zero,t0,d,col,d.def.name.toUpperCase()+(d.on?'':'  · BYPASS'));
+      if(d.id===selId)so=o});
+    selM.visible=!!so;if(so){selM.position.x=so.grp.position.x;selM.scale.set(so.w+0.7,so.d+0.7,1)}
+    renderer.render(scene,cam);
+  }
+  return {layout,remove,knobs,render};
+})();
+
+/* ───────────── main loop ───────────── */
+function frame(now){
+  requestAnimationFrame(frame);let t0=0;
+  if(ctx){dryAn.getFloatTimeDomainData(dryBuf);t0=findTrig(dryBuf);chain.forEach(d=>d.an.getFloatTimeDomainData(d.buf));}
+  stage.render(t0);drawPanel(t0,now);
+}
+function boot(){applyPreset('blues');requestAnimationFrame(frame);}
+const fontsReady=document.fonts&&document.fonts.load?document.fonts.load('700 30px "Barlow Condensed"'):Promise.resolve();
+Promise.race([fontsReady,new Promise(r=>setTimeout(r,1500))]).then(boot,boot);
+})();
+</script>
