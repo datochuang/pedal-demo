@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>電吉他效果器 × 音箱 3D 互動實驗室</title>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/" } }
+</script>
+<style>
+  :root { --bg:#0a0c11; --panel:rgba(16,20,29,.82); --line:#262d3d; --txt:#d7deec; --dim:#8b97ad; --acc:#ffb347; --cy:#59d8ff; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--txt); font:14px/1.55 "PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif; overflow:hidden; }
+  #stage { position:fixed; inset:0 0 260px 0; }
+  #stage canvas { display:block; touch-action:none; }
+  .panel { position:fixed; background:var(--panel); backdrop-filter:blur(10px); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  #top { top:10px; left:10px; right:10px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:8px 12px; }
+  #top h1 { font-size:15px; margin:0; white-space:nowrap; }
+  #chain { display:flex; align-items:center; gap:2px; flex-wrap:wrap; }
+  .arr { color:var(--dim); font-weight:400; }
+  .chip { display:flex; align-items:center; gap:6px; padding:3px 9px 3px 6px; border:1px solid var(--line); border-radius:99px; cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none; }
+  .chip .dot { width:12px; height:12px; border-radius:50%; background:#3a2020; border:1px solid #5a3030; display:block; }
+  .chip.on { color:var(--txt); border-color:#4a5575; }
+  .chip.on .dot { background:#ff4a3a; box-shadow:0 0 8px #ff4a3a; border-color:#ff8a7a; }
+  .chip.sel { outline:2px solid var(--cy); }
+  .chip.amp { border-style:dashed; }
+  #left { top:70px; left:10px; width:210px; max-height:calc(100% - 340px); overflow:auto; }
+  #right { top:70px; right:10px; width:330px; max-height:calc(100% - 340px); overflow:auto; }
+  h3 { font-size:12px; color:var(--dim); margin:14px 0 4px; letter-spacing:.04em; }
+  .panel h3:first-child { margin-top:0; }
+  #right h2 { margin:0; font-size:19px; }
+  .sub { color:var(--dim); font-size:12px; margin-bottom:8px; }
+  #right p { margin:4px 0; font-size:13px; }
+  .btns { display:flex; flex-wrap:wrap; gap:5px; }
+  button { background:#1a2030; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:5px 9px; font:inherit; font-size:12px; cursor:pointer; }
+  button:hover { border-color:#4a5575; }
+  button.on, button.active { background:#33250f; border-color:var(--acc); color:var(--acc); }
+  button.big { width:100%; padding:8px; margin:6px 0; font-size:13px; }
+  .knobrow { display:grid; grid-template-columns:66px 1fr 92px; gap:8px; align-items:center; margin:5px 0; font-size:12px; }
+  .knobrow span { color:var(--dim); font-weight:700; }
+  .knobrow em { font-style:normal; color:var(--acc); text-align:right; font-size:12px; }
+  input[type=range] { width:100%; accent-color:var(--acc); }
+  #tf { width:100%; height:auto; background:#0c1018; border:1px solid var(--line); border-radius:8px; }
+  #bottom { left:10px; right:10px; bottom:10px; height:240px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  #bottom .box { position:relative; min-width:0; }
+  #bottom canvas { width:100%; height:calc(100% - 22px); background:#0b0e15; border:1px solid var(--line); border-radius:8px; display:block; }
+  .cap { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--dim); height:22px; gap:8px; }
+  .cap b { color:var(--txt); }
+  .cap label { display:flex; align-items:center; gap:4px; }
+  .leg i { display:inline-block; width:14px; height:3px; margin:0 4px 2px 8px; vertical-align:middle; }
+  #srcNote { color:#ff9f7a; font-size:12px; margin-top:4px; }
+  #start { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; background:radial-gradient(circle at 50% 40%, #16203a, #07080c); }
+  #start .card { max-width:520px; padding:28px; text-align:center; }
+  #start h1 { font-size:26px; margin:0 0 10px; }
+  #start p { color:var(--dim); margin:6px 0; }
+  #startBtn { font-size:17px; padding:12px 28px; margin-top:18px; background:var(--acc); color:#201300; border:0; font-weight:700; border-radius:99px; }
+  @media (max-width:900px) {
+    #right { top:auto; bottom:260px; left:10px; right:10px; width:auto; max-height:26%; }
+    #stage { inset:60px 0 260px 0; }
+    #left { display:none; }
+    #bottom { grid-template-columns:1fr; height:230px; }
+    #bottom .box:nth-child(2) { display:none; }
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="top" class="panel">
+  <h1>🎸 效果器 × 音箱實驗室</h1>
+  <div id="chain"></div>
+</div>
+
+<aside id="left" class="panel">
+  <h3>預設組合</h3>
+  <div id="presets" class="btns"></div>
+  <h3>音箱</h3>
+  <div id="ampBtns" class="btns"></div>
+  <h3>音源</h3>
+  <div id="srcBtns" class="btns">
+    <button data-src="riff">吉他 Riff</button>
+    <button data-src="note">單音 A3</button>
+    <button data-src="sine">正弦波 220Hz</button>
+    <button data-src="file">上傳檔案</button>
+    <button data-src="mic">麥克風 / 吉他輸入</button>
+  </div>
+  <input type="file" id="fileIn" accept="audio/*" hidden>
+  <div id="srcNote"></div>
+  <h3>吉他輸出（Pickup Level）</h3>
+  <input type="range" id="inLevel" min="0.1" max="2" step="0.01" value="1">
+  <h3>主音量</h3>
+  <input type="range" id="master" min="0" max="1" step="0.01" value="0.7">
+  <h3>操作</h3>
+  <p style="font-size:12px;color:var(--dim);margin:0">• 點踏板的<b>銀色踩釘</b>＝開關<br>• 在<b>旋鈕</b>上按住上下拖曳＝調整<br>• 點踏板／音箱＝看說明<br>• 拖曳空白處＝旋轉視角，滾輪＝縮放<br>• 效果器可任意疊加，順序固定如上方訊號鏈</p>
+</aside>
+
+<aside id="right" class="panel"><div id="info"></div></aside>
+
+<section id="bottom" class="panel">
+  <div class="box">
+    <div class="cap"><span><b>時域波形</b><span class="leg"><i style="background:#96a5be"></i>原始乾聲<i style="background:#ffb347"></i>效果後</span></span>
+      <span id="peak"></span>
+      <span><label><input type="checkbox" id="norm" checked>自動放大</label> <label>時間軸 <input type="range" id="zoom" min="300" max="3000" step="50" value="1200" style="width:80px"></label></span></div>
+    <canvas id="scope"></canvas>
+  </div>
+  <div class="box">
+    <div class="cap"><span><b>頻譜</b><span class="leg"><i style="background:#96a5be"></i>乾聲<i style="background:#ffb347"></i>效果後</span></span><span>對數頻率 30 Hz – 12 kHz</span></div>
+    <canvas id="spec"></canvas>
+  </div>
+</section>
+
+<div id="start">
+  <div class="card">
+    <h1>🎸 電吉他效果器 × 音箱<br>3D 互動實驗室</h1>
+    <p>11 種效果器與 4 款經典音箱，全部即時運算。<br>可以聽、可以看波形與頻譜、可以任意疊加。</p>
+    <p>建議戴耳機。</p>
+    <button id="startBtn">開始</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
