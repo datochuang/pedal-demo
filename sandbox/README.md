@@ -58,7 +58,7 @@ PROMPT_FILE=other.txt sandbox/run.sh x sonnet  # 換一份題目
 
 ## 已知的限制
 
-- **網路沒有封鎖。** 成果若已發佈到網路上（例如 claude.ai 的頁面或這個 GitHub repo），
+- **網路沒有封鎖。** 成果若已發佈到網路上（例如 claude.ai 的頁面、這個 GitHub repo 或它的 GitHub Pages 網站），
   受測端沒有 Artifact 工具、也不知道網址，但 sandbox 並沒有在網路層擋它。
 - **與第一次的條件差異：** 第一次有 Artifact 工具（發佈前會拿到一份頁面設計準則），受測端沒有；
   第一次是在 VSCode 裡互動執行，受測端是無人值守的單次執行，無法向使用者提問。

@@ -3,16 +3,21 @@
 電吉他效果器 / 音箱的 3D 互動介紹，以及用它做的一次跨模型對照：
 同一份需求，交給兩個 Claude 模型各自從零做一次。
 
+**線上直接玩：<https://datochuang.github.io/pedal-demo/>**
+（[Fable 的版本](https://datochuang.github.io/pedal-demo/fable/)、
+[Sonnet 的版本](https://datochuang.github.io/pedal-demo/sonnet/)）
+
 需求原文在 [sandbox/prompt.txt](sandbox/prompt.txt)：做一個 3D 互動式的介紹，
 可以試各種代表性的效果器與音箱、聽到聲音怎麼變、看到波形怎麼變，而且效果可以疊加。
 
 ## 內容
 
-| 資料夾 | 是什麼 | 怎麼開 |
+| 資料夾 | 是什麼 | 在本機怎麼開 |
 |---|---|---|
 | [fable/](fable/) | Claude Fable 5.2 的版本（先做的那一個） | 用瀏覽器直接開 `fable/index.html`，需連網載入 three.js 與字型 |
 | [sonnet/](sonnet/) | Claude Sonnet 5.5 的版本，在 sandbox 內完成，看不到 `fable/` | `cd sonnet && python3 -m http.server 8765`，再開 `http://localhost:8765` |
 | [sandbox/](sandbox/) | 隔離測試台：讓另一個模型重做同一題，且看不到先前的成果 | 見 [sandbox/README.md](sandbox/README.md) |
+| `index.html`、`assets/` | 網站首頁與兩張預覽圖 | 見下方「網站」 |
 
 `sonnet/` 是該次執行的原始輸出，沒有修改過。其中 `sonnet/vendor/` 是 three.js r187（MIT 授權），
 與 npm 上 `three@0.187.0` 的檔案逐位元相同。
@@ -39,3 +44,14 @@
 - 執行紀錄逐筆檢查過：Sonnet 沒有任何一次工具呼叫碰到先前的成果。
 - 條件不完全相同，對 Sonnet 稍微不利，細節見 [sandbox/README.md](sandbox/README.md) 的「已知的限制」。
 - 這張差異表是 Fable 整理的，也就是比較的其中一方。模型聽不到聲音，音色好壞要靠人實際試聽判斷。
+
+## 網站
+
+網站用 GitHub Pages 發佈，來源是 `gh-pages` 分支，內容與 `main` 完全相同。
+改完東西之後，兩個分支一起推就會更新網站（約一分鐘後生效）：
+
+```bash
+git push origin main main:gh-pages
+```
+
+根目錄的 `.nojekyll` 是告訴 GitHub 不要經過 Jekyll 處理，檔案原樣提供。
